@@ -1,27 +1,56 @@
+import os
 from sqlalchemy import URL, create_engine, Column, String, Integer, ForeignKey, DateTime, asc, desc
 from sqlalchemy.orm import sessionmaker, declarative_base, Session, relationship
+from sqlalchemy.exc import SQLAlchemyError
 from datetime import datetime, timezone
-from typing import Generator, List
+from typing import Generator, List, Optional
+from logger import logger
+from sqlalchemy.engine import Engine
+from dotenv import load_dotenv
+
+
+# Env loader
+load_dotenv()
 
 # Creating the database engine
 connection_string = URL.create(
   'postgresql',
-  username='neondb_owner',
-  password='0bwerTAntPH3',
-  host='ep-white-recipe-a5x0smu4.us-east-2.aws.neon.tech',
-  database='neondb',
+  username=os.getenv('DB_USERNAME'),
+  password=os.getenv('DB_PASSWORD'),
+  host= os.getenv('DB_HOSTNAME'),
+  database=os.getenv('DB_NAME'),
 )
 
-try:
 
-  # Ititialing the engine 
-  engine = create_engine(connection_string,  connect_args={'sslmode':'require'})
-  if engine:
-    print("Successfully connected")
 
-except Exception as e:
-    print(f"Database Error!")
 
+def get_engine(conn_str:str, sslmode:str = "require") -> Optional[Engine]:
+    
+    """
+    Connects to database by provided connection string
+    
+    Args: 
+      conn_str: str -> Databse connection string
+      sslmode: Optional[str] -> SSL mode for connection
+    
+    Returns:
+      Optional[Engine]: returns engine sqlalchemy object if it is connected
+
+    """
+    
+    try:
+
+      engine = create_engine(conn_str, connect_args={"sslmode":sslmode})
+      logger.info("Database connected successfully")
+      return engine
+    
+    except SQLAlchemyError as e:
+        logger.error("failed to connect to dabase", e)
+        return None
+
+
+# Initializing engine object
+engine = get_engine(conn_str=connection_string)
 
 
 # ORM Session
@@ -80,7 +109,7 @@ class Post(Base):
      self.userId = userId
 
   def __repr__(self) -> str:
-     return f"Post: {self.title}, {self.content}, Owner: {self.userId}"
+     return f"Post: {self.title}, {self.content}, Owner: {self.userId}, Likes: {len(self.likes)}"
 
 
 # Like model
@@ -138,6 +167,11 @@ def get_likes_post(postId, db:Session) -> List[Like]:
 
    return likes
       
+# Join Query
+def get_user_liked_posts(db:Session, userId:int, postId:int):
+   userLikedPost = db.query(User, Post).filter(Like.postId == postId).filter(Like.userId == userId).all()
+
+   return userLikedPost
 
 
 # CRUD of models
@@ -225,6 +259,8 @@ if __name__ == "__main__":
      
     like : Like = like_post(userId=userId, postId=postId, db=db)
     likes : List[Like] = get_likes_post(postId=postId, db=db)
+
+    user_liked_post = get_user_liked_posts(db=db, postId=postId, userId=userId)
       
 
     if like:
@@ -233,6 +269,7 @@ if __name__ == "__main__":
       print("Faield to like the post")
 
     print(f"Likes: {len(likes)}")
+    print(f"User Liked Post: {len(user_liked_post)}")
   
   finally:
      db.close()
